@@ -11,6 +11,7 @@ package io.debezium.server.bigquery;
 import com.google.api.gax.retrying.RetrySettings;
 import com.google.auth.oauth2.GoogleCredentials;
 import com.google.cloud.bigquery.*;
+import com.google.cloud.bigquery.storage.v1.TableFieldSchema;
 import io.debezium.DebeziumException;
 import io.debezium.config.Configuration;
 import io.debezium.config.Field;
@@ -131,5 +132,12 @@ public class ConsumerUtil {
   public static TableResult executeQuery(BigQuery bqClient, String query) throws SQLException {
     return ConsumerUtil.executeQuery(bqClient, query, null);
   }
-  
+
+  public static TableFieldSchema.Type fromStandardSQLTypeName(StandardSQLTypeName sqlTypeName) {
+    return switch (sqlTypeName) {
+      case FLOAT64 -> TableFieldSchema.Type.DOUBLE;
+      case ARRAY, RANGE -> TableFieldSchema.Type.UNRECOGNIZED;
+      default -> TableFieldSchema.Type.valueOf(sqlTypeName.name());
+    };
+  }
 }

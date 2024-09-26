@@ -134,9 +134,10 @@ public class StreamBigqueryChangeConsumer extends AbstractChangeConsumer {
   private DataWriter getDataWriter(Table table) {
     try {
       return new DataWriter(
-          TableName.of(table.getTableId().getProject(), table.getTableId().getDataset(), table.getTableId().getTable()),
+              table,
           bigQueryWriteClient,
-          ignoreUnknownFields
+              ignoreUnknownFields,
+              upsert
       );
     } catch (DescriptorValidationException | IOException | InterruptedException e) {
       throw new DebeziumException("Failed to initialize stream writer for table " + table.getTableId(), e);
@@ -308,16 +309,28 @@ public class StreamBigqueryChangeConsumer extends AbstractChangeConsumer {
   protected static class DataWriter {
     private final JsonStreamWriter streamWriter;
 
-    public DataWriter(TableName parentTable, BigQueryWriteClient client,
-                      Boolean ignoreUnknownFields)
+    public DataWriter(Table table, BigQueryWriteClient client,
+                      Boolean ignoreUnknownFields, Boolean upsert)
         throws DescriptorValidationException, IOException, InterruptedException {
 
       // Use the JSON stream writer to send records in JSON format. Specify the table name to write
       // to the default stream.
       // For more information about JsonStreamWriter, see:
       // https://googleapis.dev/java/google-cloud-bigquerystorage/latest/com/google/cloud/bigquery/storage/v1/JsonStreamWriter.html
+      TableSchema.Builder tableSchemaBuilder = TableSchema.newBuilder();
+      for (Field field : table.getDefinition().getSchema().getFields()) {
+        tableSchemaBuilder.addFields(TableFieldSchema.newBuilder().setName(field.getName())
+                .setType(ConsumerUtil.fromStandardSQLTypeName(field.getType().getStandardType()))
+                .setMode(TableFieldSchema.Mode.valueOf(field.getMode().name()))
+                .build());
+      }
+      if (upsert) {
+        tableSchemaBuilder.addFields(TableFieldSchema.newBuilder().setName("_change_type")
+                .setMode(TableFieldSchema.Mode.NULLABLE)
+                .setType(TableFieldSchema.Type.STRING).build());
+      }
       streamWriter = JsonStreamWriter
-          .newBuilder(parentTable.toString(), client)
+              .newBuilder(TableName.of(table.getTableId().getProject(), table.getTableId().getDataset(), table.getTableId().getTable()).toString(), tableSchemaBuilder.build(), client)
           .setIgnoreUnknownFields(ignoreUnknownFields)
           .build();
     }
